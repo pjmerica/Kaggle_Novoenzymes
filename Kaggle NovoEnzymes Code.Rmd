@@ -58,6 +58,8 @@ train = read.csv("train.csv")
 
 training_updates= read.csv("train_updates_20220929.csv")
 
+test = read.csv("test.csv")
+
 head(train)
 
 ```
