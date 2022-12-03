@@ -46,7 +46,7 @@ test = read.csv("test.csv")
 
 pdbfile = read.pdb("wildtype_structure_prediction_af2.pdb" )
 
-
+head(pdbfile$atom)
 
 ```
 
