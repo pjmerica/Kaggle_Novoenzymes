@@ -4,22 +4,12 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-
-
-
-```{r setup, include=FALSE}
 
 knitr::opts_chunk$set(echo = TRUE)
 
 ```
-
-
 
 ## Libraries
-
 
 ```{r}
 
@@ -30,11 +20,7 @@ library(bio3d)
 
 ```
 
-
-
 ## Reading in data
-
-
 
 ```{r}
 
@@ -46,18 +32,15 @@ test = read.csv("test.csv")
 
 pdbfile = read.pdb("wildtype_structure_prediction_af2.pdb" )
 
-head(pdbfile$atom)
+proteinsequence = pdbfile$atom
+
+head(train)
 
 ```
 
-
-
+## Data Cleaning and Grouping/Preparing
 
 ### Data Cleaning for update (dropping bad data)
-
-
-
-
 
 ```{r}
 
@@ -78,5 +61,42 @@ Updated_Train= train[!train$seq_id %in% seq_id_list ,]
 
 ```
 
+### Grouping Train Data so we can identify mutations
 
+```{r}
+library(stringr)
+
+## Creating Group var with dummy var
+Updated_Train[,"group"] = -1
+
+
+## Getting lengths of all the protein sequence in the dataset
+
+Updated_Train$protein_length = str_length(Updated_Train$protein_sequence) 
+
+Updated_Train$protein_length
+grp = 0
+
+summary(Updated_Train)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+## EDA and Fun Graphs
+
+### Length of Protein Sequences
+
+```{r}
+
+hist(Updated_Train$protein_length, xlim = c(0,2000))
+```
 
