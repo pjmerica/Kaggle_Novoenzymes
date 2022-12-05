@@ -17,24 +17,51 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(bio3d)
-
+library(reticulate)
 ```
 
 ## Reading in data
 
 ```{r}
 
+# Original Training Data from Kaggle
 train = read.csv("train.csv")
 
+# Training data update 
 training_updates= read.csv("train_updates_20220929.csv")
 
+# Test data we will be ranking and turning in
 test = read.csv("test.csv")
 
+# wild type sequence in the test data.
+test_wild_sequence = "VPVNPEPDATSVENVALKTGSGDSQSDPIKADLEVKGQSALPFDVDCWAILCKGAPNVLQRVNEKTKNSNRDRSGANKGPFKDPQKWGIKALPPKNPSWSAQDFKSPEEYAFASSLQGGTNAILAPVNLASQNSQGGVLNGFYSANKVAQFDPSKPQQTKGTWFQITKFTGAAGPYCKALGSNDKSVCDKNKNIAGDWGFDPAKWAYQYDEKNNKFNYVGK"
+
+# PDB file containing our one test wild type
 pdbfile = read.pdb("wildtype_structure_prediction_af2.pdb" )
 
 proteinsequence = pdbfile$atom
 
 head(train)
+
+# Data from Robert Hatch in Kaggle 
+
+train_wildtype_groups = read.csv("train_wildtype_groups.csv")
+
+train_no_wildtype = read.csv("train_no_wildtype.csv")
+
+## Chris Train_data
+
+kag_train = read.csv("kaggle_train.csv")
+
+## Data From Jin in Kaggle 
+
+JinTrain = read.csv("train_jin.csv")
+
+JinTest = read.csv("test_jin.csv")
+
+JinTm = read.csv("tm_jin.csv")
+
+head(JinTm)
 
 ```
 
@@ -77,11 +104,65 @@ Updated_Train$protein_length = str_length(Updated_Train$protein_sequence)
 Updated_Train$protein_length
 grp = 0
 
-summary(Updated_Train)
+
+    
+    
 ```
 
 
+### Setting up Test data
 
+```{r}
+
+# Code modified from this location: 
+# https://www.kaggle.com/code/oxzplvifi/novozymes-in-r-blosum-deepddg-demask
+# Add mutation information to testing set:
+test[,c('type','resid','wt','mut')] <- do.call(rbind,lapply(test$protein_sequence,function(seq){
+  # case 1 = wild type:
+  if(seq==test_wild_sequence){ 
+    return(c('WT',-1,NaN,NaN))
+  # case 2 = substitution:
+  } else if(nchar(seq)==nchar(test_wild_sequence)){ 
+    i <- mapply(function(x,y) which(x!=y)[1], strsplit(seq,""), strsplit(test_wild_sequence,""))
+    return(c('SUB',i,substr(test_wild_sequence,i,i),substr(seq,i,i)))
+  # case 3 = deletion:
+  } else if(nchar(seq)<nchar(test_wild_sequence)){ 
+    wtsub <- substr(test_wild_sequence,1,nchar(seq))
+    i <- mapply(function(x,y) which(x!=y)[1], strsplit(seq,""), strsplit(wtsub,""))
+    return(c('DEL',i,substr(test_wild_sequence,i,i),NaN))
+  }
+}))
+head(test)
+
+
+```
+
+### Setting up same format for the WildType data
+
+```{r}
+
+# Using same logic as above but adjusting it so that we can use it more better
+# creating columns
+train_wildtype_groups[,c('type','resid','wt','mut')] = ""
+
+  for (i in 1:nrow(train_wildtype_groups)) { # case 1 = wild type:
+  if(train_wildtype_groups$protein_sequence[i]==train_wildtype_groups$wildtype[i]){ 
+    return(c(train_wildtype_groups$wt[i],-1,NaN,NaN))
+  # case 2 = substitution:
+  } else if(nchar(train_wildtype_groups$protein_sequence[i])==nchar(train_wildtype_groups$wildtype[i])){ 
+    i <- mapply(function(x,y) which(x!=y)[1], strsplit(train_wildtype_groups$protein_sequence[i],""), strsplit(train_wildtype_groups$wildtype[i],""))
+    return(c('SUB',i,substr(train_wildtype_groups$wildtype[i],i,i),substr(train_wildtype_groups$protein_sequence[i],i,i)))
+  # case 3 = deletion:
+  } else if(nchar(train_wildtype_groups$protein_sequence[i])<nchar(train_wildtype_groups$wildtype[i])){ 
+    wtsub <- substr(train_wildtype_groups$wildtype[i],1,nchar(train_wildtype_groups$protein_sequence[i]))
+    i <- mapply(function(x,y) which(x!=y)[1], strsplit(seq,""), strsplit(wtsub,""))
+    return(c('DEL',i,substr(train_wildtype_groups$wildtype[i],i,i),NaN))
+  }
+})
+head(train_wildtype_groups)
+
+
+```
 
 
 
@@ -98,5 +179,16 @@ summary(Updated_Train)
 ```{r}
 
 hist(Updated_Train$protein_length, xlim = c(0,2000))
+
+hist(train_wildtype_groups$group, xlim = c(0,2000))
+max(train_wildtype_groups$group)
 ```
+
+
+
+
+
+
+
+
 
