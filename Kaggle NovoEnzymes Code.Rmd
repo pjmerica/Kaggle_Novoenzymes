@@ -18,6 +18,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(bio3d)
 library(reticulate)
+
+library(xgboost)
+library(ggplot2)
 ```
 
 ## Reading in data
@@ -35,6 +38,7 @@ test = read.csv("test.csv")
 
 # wild type sequence in the test data.
 test_wild_sequence = "VPVNPEPDATSVENVALKTGSGDSQSDPIKADLEVKGQSALPFDVDCWAILCKGAPNVLQRVNEKTKNSNRDRSGANKGPFKDPQKWGIKALPPKNPSWSAQDFKSPEEYAFASSLQGGTNAILAPVNLASQNSQGGVLNGFYSANKVAQFDPSKPQQTKGTWFQITKFTGAAGPYCKALGSNDKSVCDKNKNIAGDWGFDPAKWAYQYDEKNNKFNYVGK"
+
 
 # PDB file containing our one test wild type
 pdbfile = read.pdb("wildtype_structure_prediction_af2.pdb" )
@@ -101,7 +105,7 @@ Updated_Train[,"group"] = -1
 
 Updated_Train$protein_length = str_length(Updated_Train$protein_sequence) 
 
-Updated_Train$protein_length
+
 grp = 0
 
 
@@ -117,7 +121,7 @@ grp = 0
 # Code modified from this location: 
 # https://www.kaggle.com/code/oxzplvifi/novozymes-in-r-blosum-deepddg-demask
 # Add mutation information to testing set:
-test[,c('type','resid','wt','mut')] <- do.call(rbind,lapply(test$protein_sequence,function(seq){
+test[,c('type','position','WT','MUT')] <- do.call(rbind,lapply(test$protein_sequence,function(seq){
   # case 1 = wild type:
   if(seq==test_wild_sequence){ 
     return(c('WT',-1,NaN,NaN))
@@ -134,38 +138,79 @@ test[,c('type','resid','wt','mut')] <- do.call(rbind,lapply(test$protein_sequenc
 }))
 head(test)
 
+# Setting up columns to match training data. 
+test$position = as.numeric(test$position)
+#Adding length of sequence
 
+test$protein_length = str_length(test$protein_sequence) 
+test$WT_length = str_length(test_wild_sequence) 
+test$sequence = test_wild_sequence
+names(test)[names(test) == "protein_sequence"] <- "mutant_seq"
+# checking position works correctly
+test$protein_length < test$position
 ```
 
 ### Setting up same format for the WildType data
 
 ```{r}
-
-# Using same logic as above but adjusting it so that we can use it more better
-# creating columns
-train_wildtype_groups[,c('type','resid','wt','mut')] = ""
-
-  for (i in 1:nrow(train_wildtype_groups)) { # case 1 = wild type:
-  if(train_wildtype_groups$protein_sequence[i]==train_wildtype_groups$wildtype[i]){ 
-    return(c(train_wildtype_groups$wt[i],-1,NaN,NaN))
-  # case 2 = substitution:
-  } else if(nchar(train_wildtype_groups$protein_sequence[i])==nchar(train_wildtype_groups$wildtype[i])){ 
-    i <- mapply(function(x,y) which(x!=y)[1], strsplit(train_wildtype_groups$protein_sequence[i],""), strsplit(train_wildtype_groups$wildtype[i],""))
-    return(c('SUB',i,substr(train_wildtype_groups$wildtype[i],i,i),substr(train_wildtype_groups$protein_sequence[i],i,i)))
-  # case 3 = deletion:
-  } else if(nchar(train_wildtype_groups$protein_sequence[i])<nchar(train_wildtype_groups$wildtype[i])){ 
-    wtsub <- substr(train_wildtype_groups$wildtype[i],1,nchar(train_wildtype_groups$protein_sequence[i]))
-    i <- mapply(function(x,y) which(x!=y)[1], strsplit(seq,""), strsplit(wtsub,""))
-    return(c('DEL',i,substr(train_wildtype_groups$wildtype[i],i,i),NaN))
-  }
-})
-head(train_wildtype_groups)
-
+# 
+# # Using same logic as above but adjusting it so that we can use it more better
+# # creating columns
+# train_wildtype_groups[,c('type','resid','wt','mut')] = ""
+# 
+#   for (i in 1:nrow(train_wildtype_groups)) { # case 1 = wild type:
+#   if(train_wildtype_groups$protein_sequence[i]==train_wildtype_groups$wildtype[i]){ 
+#     return(c(train_wildtype_groups$wt[i],-1,NaN,NaN))
+#   # case 2 = substitution:
+#   } else if(nchar(train_wildtype_groups$protein_sequence[i])==nchar(train_wildtype_groups$wildtype[i])){ 
+#     i <- mapply(function(x,y) which(x!=y)[1], strsplit(train_wildtype_groups$protein_sequence[i],""), strsplit(train_wildtype_groups$wildtype[i],""))
+#     return(c('SUB',i,substr(train_wildtype_groups$wildtype[i],i,i),substr(train_wildtype_groups$protein_sequence[i],i,i)))
+#   # case 3 = deletion:
+#   } else if(nchar(train_wildtype_groups$protein_sequence[i])<nchar(train_wildtype_groups$wildtype[i])){ 
+#     wtsub <- substr(train_wildtype_groups$wildtype[i],1,nchar(train_wildtype_groups$protein_sequence[i]))
+#     i <- mapply(function(x,y) which(x!=y)[1], strsplit(seq,""), strsplit(wtsub,""))
+#     return(c('DEL',i,substr(train_wildtype_groups$wildtype[i],i,i),NaN))
+#   }
+# }
+# head(train_wildtype_groups)
 
 ```
 
 
 
+### Joining all the csv's together 
+
+```{r}
+
+
+JinTest$protein_length = str_length(JinTest$mutant_seq) 
+JinTest$WT_length = str_length(JinTest$sequence) 
+#normalizing dGG
+JinTest$dTm = scale(JinTest$ddG)
+
+#Renaming Columns so they can be joined
+names(JinTest)[names(JinTest) == "mutation"] <- "MUT"
+names(JinTest)[names(JinTest) == "wildtype"] <- "WT"
+# Removing ddG
+JinTest2 = JinTest[,-6]
+
+JinTrain$protein_length = str_length(JinTrain$mutant_seq) 
+JinTrain$WT_length = str_length(JinTrain$sequence) 
+#normalizing dGG
+JinTrain$dTm = scale(JinTrain$ddG)
+#Renaming Columns so they can be joined
+names(JinTrain)[names(JinTrain) == "mutation"] <- "MUT"
+names(JinTrain)[names(JinTrain) == "wildtype"] <- "WT"
+# Removing ddG
+JinTrain2 = JinTrain[,-6]
+
+JinTm$protein_length = str_length(JinTm$mutant_seq) 
+JinTm$WT_length = str_length(JinTm$sequence) 
+JinTm$dTm = scale(JinTm$dTm)
+
+Super_jin = rbind(JinTest2, JinTrain2, JinTm)
+
+```
 
 
 
@@ -189,6 +234,89 @@ max(train_wildtype_groups$group)
 
 
 
+
+## Modelling begins 
+
+```{r}
+# Making column names the Same
+
+head(test)
+
+head(kag_train)
+kag_train$WT_length = str_length(kag_train$sequence) 
+kag_train$protein_length = str_length(kag_train$mutant_seq) 
+
+summary(as.factor(test$type))
+#kag_train$type = case_when
+# checking if there are any deletions in Kaggle training data. There aren't b/c this output = nrow(kag_train)
+sum(kag_train$protein_length < kag_train$sequence)
+```
+
+
+### First very Simple model
+
+
+
+```{r}
+# Need to normalize the kaggle data set too
+kag_train$dTm = scale(kag_train$dTm)
+cols_to_drop_train = c(-1,-5, -8)
+cols_to_drop_train2 = c(-1, -8)
+
+kagstrain =  kag_train[, cols_to_drop_train2 ]
+train_matrix = kag_train[, cols_to_drop_train ]
+
+Jin_for_join = Super_jin %>% dplyr::select(mutant_seq, position, WT, MUT, protein_length, WT_length, sequence, dTm)
+supertable = rbind(Jin_for_join, kagstrain)
+
+train_matrix = supertable[,-8]
+X_train = data.matrix(train_matrix)                  # independent variables for train
+y_train = supertable[,8]                               # dependent variables for train
+summary(supertable)
+traincolnames = colnames(kag_train)
+rownames(test) <- test[,1]
+cols_to_drop = c(-1,-3,-4,-5)
+test_matrix = test[, cols_to_drop ]
+X_test = data.matrix(test_matrix)                  # independent variables for train
+#y_test = test[validset,12]                               # dependent variables for train
+set.seed(200)
+
+xgb <- xgboost(data = X_train, 
+  label = y_train, 
+ # eta = 0.1,
+ max_depth = 15, 
+  nround=1000, 
+ subsample = 0.5,
+  colsample_bytree = 0.2,
+  seed = 200,
+  eval_metric = "rmse",
+  objective = "reg:squarederror",
+ # num_class = 12,
+ # nthread = 3
+ verbose = T
+)
+
+# Compute feature importance matrix
+importance_matrix = xgb.importance(colnames(train_matrix), model = xgb)
+importance_matrix
+xgb_pred = predict(xgb, X_test)
+```
+
+
+## Writing csv
+
+```{r}
+df = data.frame( seq_id  = test[, "seq_id"],
+                 Tm = xgb_pred)
+df2 <- arrange(df,-Tm)
+
+write.csv(df2, "NewPreds.csv")
+summary(as.factor(train_matrix$WT))
+summary(as.factor(test_matrix$WT))
+
+
+deletion = test %>% dplyr::filter(type == "DEL")
+```
 
 
 
